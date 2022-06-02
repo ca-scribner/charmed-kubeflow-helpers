@@ -1,6 +1,5 @@
-from typing import Union
-
-from ops.model import BlockedStatus, WaitingStatus, ActiveStatus
+from ops.model import WaitingStatus
+from ..status_handling import CharmStatusType
 
 
 class ErrorWithStatus(Exception):
@@ -8,7 +7,7 @@ class ErrorWithStatus(Exception):
     """
     # TODO: Should this status base class just accept an instanced Status rather than msg and status_type?
     #       The msg+type feels like a chore for the user
-    def __init__(self, msg: str, status_type: Union[ActiveStatus, WaitingStatus, BlockedStatus, None]):
+    def __init__(self, msg: str, status_type: CharmStatusType):
         super().__init__(str(msg))
         self.msg = str(msg)
         self.status_type = status_type
@@ -23,6 +22,6 @@ class LeadershipError(ErrorWithStatus):
     def __init__(
             self,
             msg: str = "Waiting for leadership",
-            status_type: Union[ActiveStatus, WaitingStatus, BlockedStatus, None] = WaitingStatus
+            status_type: CharmStatusType = WaitingStatus
     ):
         super().__init__(msg, status_type)
