@@ -16,19 +16,20 @@ from ..types import LightkubeResourcesType
 from ...utilities import is_leader
 
 
-class ManifestCharmExtension:
-    """Reusable extension that turns a CharmBase into a Kubernetes manifest charm
+class KubernetesResourceHandler:
+    """Defines an API for handling Kubernetes resources in charm code
 
     To use this extension, the passed charm needs:
     * TODO: Add to this list
     * self.template_files: an iterable of jinja templates describing the k8s manifests to render
     * self.context_for_render(): a function that returns a dict of key:value pairs to be used as
                                  context for rendering the templates
+                                 TODO: note atm this is a property in the old code
     """
 
     def __init__(
         self,
-        charm: CharmBase,
+        charm: CharmBase,  # alternatively, we could just pass the things we need from charm
     ):
         # self._validate_charm(charm)  # TODO
         self._charm = charm
@@ -93,12 +94,13 @@ class ManifestCharmExtension:
         a list of all resources that should currently exist in the cluster.
         """
         self.log.info("Rendering manifests")
-        self.log.debug(f"Rendering with context: {self.context_for_render}")
+        context = self._charm.context_for_render
+        self.log.debug(f"Rendering with context: {context}")
         manifest_parts = []
         for template_file in self.template_files:
             self.log.debug(f"Rendering manifest for {template_file}")
             template = Template(Path(template_file).read_text())
-            rendered_template = template.render(**self.context_for_render)
+            rendered_template = template.render(**context)
             manifest_parts.append(rendered_template)
             self.log.debug(f"Rendered manifest:\n{manifest_parts[-1]}")
         return codecs.load_all_yaml("\n---\n".join(manifest_parts))
