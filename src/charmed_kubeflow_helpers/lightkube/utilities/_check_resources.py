@@ -3,13 +3,14 @@ from typing import List, Union, Tuple
 import lightkube
 from lightkube.core.resource import NamespacedResource, GlobalResource
 from lightkube.resources.apps_v1 import StatefulSet
-from ops.model import ActiveStatus, WaitingStatus, BlockedStatus, MaintenanceStatus
+from ops.model import WaitingStatus, BlockedStatus
 
 from ..exceptions import ResourceNotFoundError, ReplicasNotReadyError
+from ...exceptions import ErrorWithStatus
 
 
 def check_resources(client: lightkube.Client, expected_resources: List[Union[NamespacedResource, GlobalResource]]) -> \
-        (bool, List[Exception]):
+        (bool, List[ErrorWithStatus]):
     """Checks status of resources in cluster, returning True if all are considered ready
 
     Note: This is a basic skeleton of a true check on the resources.  Currently it only checks
@@ -20,7 +21,7 @@ def check_resources(client: lightkube.Client, expected_resources: List[Union[Nam
         List of Exceptions encountered during failed checks, with each entry
         indexed the same as the corresponding expected_resource (list[str])
     """
-    errors = [None] * len(expected_resources)
+    errors: list = [None] * len(expected_resources)
     for i, expected_resource in enumerate(expected_resources):
         try:
             found_resource = client.get(
@@ -57,7 +58,7 @@ def validate_statefulset(resource: StatefulSet) -> bool:
     return True
 
 
-def get_first_worst_error(errors: List[Exception]) -> Exception:
+def get_first_worst_error(errors: List[ErrorWithStatus]) -> ErrorWithStatus:
     """Returns the first of the worst errors in the list, ranked by their status
 
     Raises if List contains no Exceptions, or if any Exception does not have a .status
