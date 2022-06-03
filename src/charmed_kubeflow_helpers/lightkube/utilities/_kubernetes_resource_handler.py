@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional, Callable, Iterable
 
 from jinja2 import Template
 from lightkube.core.exceptions import ApiError
@@ -15,19 +15,12 @@ from ..types import LightkubeResourcesList
 
 class KubernetesResourceHandler:
     """Defines an API for handling Kubernetes resources in charm code
-
-    To use this extension, the passed charm needs:
-    * TODO: Add to this list
-    * self.template_files: an iterable of jinja templates describing the k8s manifests to render
-    * self.context_for_render(): a function that returns a dict of key:value pairs to be used as
-                                 context for rendering the templates
-                                 TODO: note atm this is a property in the old code
     """
 
     def __init__(
         self,
-        template_files_factory: Callable,
-        context_factory: Callable,
+        template_files_factory: Callable[[], Iterable[str]],
+        context_factory: Callable[[], dict],
         field_manager: str,
         logger: Optional[logging.Logger] = None,
     ):
