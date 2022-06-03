@@ -4,4 +4,4 @@ from lightkube.core.resource import NamespacedResource, GlobalResource
 
 
 LightkubeResourceType = Union[NamespacedResource, GlobalResource]
-LightkubeResourcesType = List[LightkubeResourceType]
+LightkubeResourcesList = List[LightkubeResourceType]

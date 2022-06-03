@@ -1,19 +1,16 @@
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 from jinja2 import Template
 from lightkube.core.exceptions import ApiError
 from lightkube import codecs, Client
-from ops.charm import CharmBase
 from ops.model import ActiveStatus, BlockedStatus
 
 from ._check_resources import check_resources, get_first_worst_error
-from ...exceptions import LeadershipError
 from ...lightkube.exceptions import ReconcileError
 from ...status_handling import CharmStatusType
-from ..types import LightkubeResourcesType
-from ...utilities import is_leader
+from ..types import LightkubeResourcesList
 
 
 class KubernetesResourceHandler:
@@ -29,42 +26,52 @@ class KubernetesResourceHandler:
 
     def __init__(
         self,
-        charm: CharmBase,  # alternatively, we could just pass the things we need from charm
+        template_files_factory: Callable,
+        context_factory: Callable,
+        field_manager: str,
+        logger: Optional[logging.Logger] = None,
     ):
-        # self._validate_charm(charm)  # TODO
-        self._charm = charm
+        """
+        Returns a KubernetesResourceHandler instance
 
-        try:
-            self.log = self._charm.log
-        except AttributeError:
-            # TODO: This should write logs under parent charm's name
-            self.log = logging.getLogger(__name__)
+        Args:
+            template_files_factory (Callable): A callable that accepts no arguments and returns an
+                                               iterable of template files to render
+            context_factory: A callable that requires no arguments returns a dict of context for
+                             rendering the templates
+            field_manager: The name of the field manager to use when using server-side-apply in
+                           kubernetes.  A good option for this is to use the application name
+                           (eg: `self.model.app.name`).
+            logger (logging.Logger): (Optional) A logger to use for logging (so that log messages
+                                     emitted here will appear under the caller's log namespace).
+                                     If not provided, a default logger will be created.
+        """
+        self._template_files_factory = template_files_factory
+        self._context_factory = context_factory
+        self._field_manager = field_manager
+
+        if logger is None:
+            self.log = logging.getLogger(__name__)  # TODO: Give default logger a better name
+        else:
+            self.log = logger
 
         self._lightkube_client = None
 
-    def on_install(self):
-        # TODO
-        raise NotImplementedError()
+    def status(self, resources: Optional[LightkubeResourcesList] = None) -> CharmStatusType:
+        """Computes the status of the managed resources as defined by the manifest
 
-    def on_update_status(self):
-        # TODO
-        raise NotImplementedError()
-
-    def resource_status(
-        self, resources: Optional[LightkubeResourcesType] = None
-    ) -> CharmStatusType:
-        """Computes the status of the managed resources as defined by the manifest, logging errors
+        The returned status is the worst status encountered, as defined in
+        .lightkube.utilities.get_first_worst_error (blocked is worse than waiting, waiting is
+        worse than active).  When multiple of the worst statuses are encountered, the first is
+        returned.
 
         TODO: This method will not notice that we have an extra resource (eg: if our
               render_manifests() previously output some Resource123, but now render_manifests()
               does not output that resource.
+        TODO: This method directly logs errors to .log.  Is that a problem?  Maybe we should just
+              return those errors?  Or could have a separate function that does that.
         """
         self.log.info("Computing status")
-
-        try:
-            is_leader(self._charm)
-        except LeadershipError as e:
-            return e.status
 
         if resources is None:
             resources = self.render_manifests()
@@ -87,17 +94,15 @@ class KubernetesResourceHandler:
 
         return status
 
-    def render_manifests(self) -> LightkubeResourcesType:
-        """Renders this charm's manifests, returning them as a list of Lightkube Resources
-
-        If overriding this class, you should replace it with a method that will always generate
-        a list of all resources that should currently exist in the cluster.
-        """
+    def render_manifests(self) -> LightkubeResourcesList:
+        """Renders this charm's manifests, returning them as a list of Lightkube Resources"""
         self.log.info("Rendering manifests")
-        context = self._charm.context_for_render
+        context = self._context_factory()
+        template_files = self._template_files_factory()
+
         self.log.debug(f"Rendering with context: {context}")
         manifest_parts = []
-        for template_file in self.template_files:
+        for template_file in template_files:
             self.log.debug(f"Rendering manifest for {template_file}")
             template = Template(Path(template_file).read_text())
             rendered_template = template.render(**context)
@@ -105,7 +110,7 @@ class KubernetesResourceHandler:
             self.log.debug(f"Rendered manifest:\n{manifest_parts[-1]}")
         return codecs.load_all_yaml("\n---\n".join(manifest_parts))
 
-    def reconcile_resources(self, resources: Optional[LightkubeResourcesType] = None):
+    def reconcile_resources(self, resources: Optional[LightkubeResourcesList] = None):
         """Reconcile our Kubernetes objects to achieve the desired state
         This can be invoked to both install or update objects in the cluster.  It uses an apply
         logic to update things only if necessary.  This method by default __does not__ remove
@@ -133,8 +138,7 @@ class KubernetesResourceHandler:
                 )
                 self.log.error(f"Error received: {str(e)}")
                 raise ReconcileError(
-                    "Cannot create required resources.  Charm may be missing "
-                    "`--trust`",
+                    "Cannot create required resources.  Charm may be missing `--trust`",
                     BlockedStatus,
                 )
             else:
@@ -144,7 +148,7 @@ class KubernetesResourceHandler:
     @property
     def lightkube_client(self) -> Client:
         if self._lightkube_client is None:
-            self._lightkube_client = Client(field_manager=self.app_name)
+            self._lightkube_client = Client(field_manager=self._field_manager)
         return self._lightkube_client
 
     @lightkube_client.setter
@@ -153,12 +157,3 @@ class KubernetesResourceHandler:
             self._lightkube_client = value
         else:
             raise ValueError("lightkube_client must be a lightkube.Client")
-
-    @property
-    def template_files(self):
-        return self._charm.template_files
-
-    @staticmethod
-    def _validate_charm(charm: CharmBase):
-        """Validates the charm to ensure it has the required attributes"""
-        raise NotImplementedError()
